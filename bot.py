@@ -8,7 +8,19 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-STAFF_ROLE_NAME = "Staff"
+STAFF_ROLES = [
+    "Dev. Team",
+    "Director",
+    "Head Admin",
+    "Senior Admin",
+    "Administrator",
+    "Moderator",
+    "Game Support"
+]
+
+
+def has_staff_role(member: discord.Member) -> bool:
+    return any(role.name in STAFF_ROLES for role in member.roles)
 
 
 class MyBot(discord.Client):
@@ -37,17 +49,22 @@ async def open_ticket_channel(guild, user, ticket_type, embed_info: discord.Embe
     if existing:
         return None, existing
 
-    staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
-
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
         guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
     }
-    if staff_role:
-        overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+    for role_name in STAFF_ROLES:
+        role = discord.utils.get(guild.roles, name=role_name)
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_channels=True
+            )
 
-    category = discord.utils.get(guild.categories, name="TICKETS")
+    category = discord.utils.get(guild.categories, name="ASKQ & REPORT")
     channel = await guild.create_text_channel(
         name=channel_name,
         overwrites=overwrites,
@@ -55,6 +72,15 @@ async def open_ticket_channel(guild, user, ticket_type, embed_info: discord.Embe
     )
 
     await channel.send(embed=embed_info, view=CloseTicketView())
+
+    staff_mentions = []
+    for role_name in STAFF_ROLES:
+        role = discord.utils.get(guild.roles, name=role_name)
+        if role:
+            staff_mentions.append(role.mention)
+    if staff_mentions:
+        await channel.send(" ".join(staff_mentions))
+
     return channel, None
 
 
@@ -74,10 +100,7 @@ class AskModal(discord.ui.Modal, title="❓ Ask Ticket"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="❓ ASK TICKET",
-            color=0x00C853
-        )
+        embed = discord.Embed(title="❓ ASK TICKET", color=0x00C853)
         embed.add_field(name="👤 Korisnik", value=interaction.user.mention, inline=True)
         embed.add_field(name="🎮 Nick na serveru", value=self.nick.value, inline=True)
         embed.add_field(name="❓ Šta treba pomoći", value=self.pitanje.value, inline=False)
@@ -112,10 +135,7 @@ class ReportModal(discord.ui.Modal, title="📋 Report Ticket"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="📋 REPORT TICKET",
-            color=0xFF4444
-        )
+        embed = discord.Embed(title="📋 REPORT TICKET", color=0xFF4444)
         embed.add_field(name="👤 Podnosilac", value=interaction.user.mention, inline=True)
         embed.add_field(name="🎮 Tvoj nick", value=self.nick.value, inline=True)
         embed.add_field(name="🚨 Prijavljeni igrač", value=self.reported_nick.value, inline=True)
@@ -159,8 +179,10 @@ class CloseTicketView(discord.ui.View):
 
 
 @bot.tree.command(name="ticketstart", description="Pošalje embed sa ticket sistemom u trenutni kanal")
-@app_commands.checks.has_permissions(manage_channels=True)
 async def ticketstart(interaction: discord.Interaction):
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
+        return
     embed = discord.Embed(
         title="🎫 TICKET SISTEM",
         description=(
@@ -172,20 +194,15 @@ async def ticketstart(interaction: discord.Interaction):
         color=0x00C853
     )
     embed.set_footer(text="Velter Roleplay | Ticket Sistem")
-
     await interaction.response.send_message("✅ Ticket sistem je pokrenut!", ephemeral=True)
     await interaction.channel.send(embed=embed, view=TicketMenuView())
 
 
-@ticketstart.error
-async def ticketstart_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
-
-
 @bot.tree.command(name="pravilastart", description="Pošalje embed sa pravilima servera u trenutni kanal")
-@app_commands.checks.has_permissions(manage_messages=True)
 async def pravilastart(interaction: discord.Interaction):
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
+        return
     embed = discord.Embed(
         title="💚 VELTER ROLEPLAY | DISCORD PRAVILA 💚",
         description="Dobrodošli na **Velter Roleplay** Discord zajednicu 💚\nMolimo sve članove da poštuju pravila kako bi server bio prijatan, organizovan i aktivan.",
@@ -267,24 +284,16 @@ async def pravilastart(interaction: discord.Interaction):
         inline=False
     )
     embed.set_footer(text="💚 Hvala ti što si deo Velter Roleplay zajednice i što pomažeš da server bude bolji za sve!")
-
     await interaction.response.send_message("✅ Pravila su poslata!", ephemeral=True)
     await interaction.channel.send(embed=embed)
 
 
-@pravilastart.error
-async def pravilastart_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
-
-
 @bot.tree.command(name="nickstart", description="Pošalje embed sa uputstvom za nickname u trenutni kanal")
-@app_commands.checks.has_permissions(manage_messages=True)
 async def nickstart(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="📝 UPUTSTVO",
-        color=0x00C853
-    )
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
+        return
+    embed = discord.Embed(title="📝 UPUTSTVO", color=0x00C853)
     embed.add_field(
         name="🇷🇸 Srpski",
         value=(
@@ -301,15 +310,8 @@ async def nickstart(interaction: discord.Interaction):
         ),
         inline=False
     )
-
     await interaction.response.send_message("✅ Uputstvo je poslato!", ephemeral=True)
     await interaction.channel.send(embed=embed)
-
-
-@nickstart.error
-async def nickstart_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
 
 
 if __name__ == "__main__":
