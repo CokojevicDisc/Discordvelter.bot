@@ -20,12 +20,15 @@ STAFF_ROLES = [
 
 
 def has_staff_role(member: discord.Member) -> bool:
+    if member.guild_permissions.administrator:
+        return True
     return any(role.name in STAFF_ROLES for role in member.roles)
 
 
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.message_content = True  # Mora biti ukljucen u Developer Portal -> Bot -> Message Content Intent
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -288,30 +291,50 @@ async def pravilastart(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed)
 
 
-@bot.tree.command(name="nickstart", description="Pošalje embed sa uputstvom za nickname u trenutni kanal")
-async def nickstart(interaction: discord.Interaction):
+
+class ObavestenieModal(discord.ui.Modal, title="📢 Novo obaveštenje"):
+    naslov = discord.ui.TextInput(
+        label="Naslov obaveštenja",
+        placeholder="npr. Važno obaveštenje!",
+        required=True,
+        max_length=100
+    )
+    tekst = discord.ui.TextInput(
+        label="Tekst obaveštenja",
+        placeholder="Upiši tekst koji želiš da pošalješ...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=2000
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title=f"📢 {self.naslov.value}",
+            description=self.tekst.value,
+            color=0x00C853
+        )
+        embed.set_footer(text=f"Obaveštenje poslao: {interaction.user.name}")
+        await interaction.response.send_message("✅ Obaveštenje je poslato!", ephemeral=True)
+        await interaction.channel.send(embed=embed)
+
+
+@bot.tree.command(name="new", description="Pošalje embed obaveštenje u trenutni kanal")
+async def new(interaction: discord.Interaction):
     if not has_staff_role(interaction.user):
         await interaction.response.send_message("❌ Nemaš dozvolu da koristiš ovu komandu!", ephemeral=True)
         return
-    embed = discord.Embed(title="📝 UPUTSTVO", color=0x00C853)
-    embed.add_field(
-        name="🇷🇸 Srpski",
-        value=(
-            "💚 Unesite vaše ime i prezime u RP formatu\n"
-            "📌 Format mora biti: **Ime_Prezime**"
-        ),
-        inline=False
-    )
-    embed.add_field(
-        name="🇬🇧 English",
-        value=(
-            "💚 Enter your first and last name in RP format\n"
-            "📌 The format must be: **FirstName_LastName**"
-        ),
-        inline=False
-    )
-    await interaction.response.send_message("✅ Uputstvo je poslato!", ephemeral=True)
-    await interaction.channel.send(embed=embed)
+    await interaction.response.send_modal(ObavestenieModal())
+
+
+IMAGE_CHANNEL_NAME = "「📸」images-from-server"
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    if message.channel.name == IMAGE_CHANNEL_NAME:
+        if not message.attachments:
+            await message.delete()
 
 
 if __name__ == "__main__":
