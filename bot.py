@@ -28,7 +28,8 @@ def has_staff_role(member: discord.Member) -> bool:
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True  # Mora biti ukljucen u Developer Portal -> Bot -> Message Content Intent
+        intents.message_content = True  # Developer Portal -> Bot -> Message Content Intent
+        intents.members = True          # Developer Portal -> Bot -> Server Members Intent
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -327,6 +328,12 @@ async def new(interaction: discord.Interaction):
 
 
 IMAGE_CHANNEL_NAME = "「📸」images-from-server"
+LOG_CHANNEL_NAME = "💾〢logs"
+
+
+async def get_log_channel(guild: discord.Guild):
+    return discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -335,6 +342,196 @@ async def on_message(message: discord.Message):
     if message.channel.name == IMAGE_CHANNEL_NAME:
         if not message.attachments:
             await message.delete()
+
+
+@bot.event
+async def on_message_delete(message: discord.Message):
+    if message.author.bot:
+        return
+    log = await get_log_channel(message.guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="🗑️ Poruka obrisana",
+        color=0xFF4444,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"{message.author.mention} (`{message.author}`)", inline=True)
+    embed.add_field(name="📌 Kanal", value=message.channel.mention, inline=True)
+    embed.add_field(name="💬 Sadržaj", value=message.content or "*[bez teksta / samo fajl]*", inline=False)
+    embed.set_footer(text=f"ID korisnika: {message.author.id}")
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if before.author.bot:
+        return
+    if before.content == after.content:
+        return
+    log = await get_log_channel(before.guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="✏️ Poruka izmenjena",
+        color=0xFFA500,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"{before.author.mention} (`{before.author}`)", inline=True)
+    embed.add_field(name="📌 Kanal", value=before.channel.mention, inline=True)
+    embed.add_field(name="📝 Pre izmene", value=before.content or "*prazno*", inline=False)
+    embed.add_field(name="📝 Nakon izmene", value=after.content or "*prazno*", inline=False)
+    embed.set_footer(text=f"ID korisnika: {before.author.id}")
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    log = await get_log_channel(member.guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="✅ Novi član se pridružio",
+        color=0x00C853,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
+    embed.add_field(name="🆔 ID", value=member.id, inline=True)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text=f"Ukupno članova: {member.guild.member_count}")
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    log = await get_log_channel(member.guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="🚪 Član napustio server",
+        color=0x808080,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"`{member}`", inline=True)
+    embed.add_field(name="🆔 ID", value=member.id, inline=True)
+    roles = [r.mention for r in member.roles if r.name != "@everyone"]
+    embed.add_field(name="🎭 Rolovi", value=", ".join(roles) if roles else "*bez rolova*", inline=False)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_member_ban(guild: discord.Guild, user: discord.User):
+    log = await get_log_channel(guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="⛔ Član banovan",
+        color=0xFF0000,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"{user.mention} (`{user}`)", inline=True)
+    embed.add_field(name="🆔 ID", value=user.id, inline=True)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_member_unban(guild: discord.Guild, user: discord.User):
+    log = await get_log_channel(guild)
+    if not log:
+        return
+    embed = discord.Embed(
+        title="✅ Član odbanovan",
+        color=0x00C853,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="👤 Korisnik", value=f"{user.mention} (`{user}`)", inline=True)
+    embed.add_field(name="🆔 ID", value=user.id, inline=True)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    await log.send(embed=embed)
+
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    log = await get_log_channel(before.guild)
+    if not log:
+        return
+
+    if before.nick != after.nick:
+        embed = discord.Embed(
+            title="✏️ Nickname promenjen",
+            color=0x3498DB,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{after.mention} (`{after}`)", inline=True)
+        embed.add_field(name="📝 Pre", value=before.nick or "*bez nicka*", inline=True)
+        embed.add_field(name="📝 Nakon", value=after.nick or "*bez nicka*", inline=True)
+        embed.set_footer(text=f"ID: {after.id}")
+        await log.send(embed=embed)
+
+    added_roles = set(after.roles) - set(before.roles)
+    removed_roles = set(before.roles) - set(after.roles)
+
+    if added_roles:
+        embed = discord.Embed(
+            title="🎭 Rol dodat",
+            color=0x00C853,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{after.mention} (`{after}`)", inline=True)
+        embed.add_field(name="➕ Dodat rol", value=", ".join(r.mention for r in added_roles), inline=True)
+        embed.set_footer(text=f"ID: {after.id}")
+        await log.send(embed=embed)
+
+    if removed_roles:
+        embed = discord.Embed(
+            title="🎭 Rol uklonjen",
+            color=0xFF4444,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{after.mention} (`{after}`)", inline=True)
+        embed.add_field(name="➖ Uklonjen rol", value=", ".join(r.mention for r in removed_roles), inline=True)
+        embed.set_footer(text=f"ID: {after.id}")
+        await log.send(embed=embed)
+
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    log = await get_log_channel(member.guild)
+    if not log:
+        return
+
+    if before.channel is None and after.channel is not None:
+        embed = discord.Embed(
+            title="🔊 Ušao u voice kanal",
+            color=0x00C853,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
+        embed.add_field(name="🔊 Kanal", value=after.channel.name, inline=True)
+        await log.send(embed=embed)
+
+    elif before.channel is not None and after.channel is None:
+        embed = discord.Embed(
+            title="🔇 Izašao iz voice kanala",
+            color=0xFF4444,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
+        embed.add_field(name="🔊 Kanal", value=before.channel.name, inline=True)
+        await log.send(embed=embed)
+
+    elif before.channel != after.channel:
+        embed = discord.Embed(
+            title="🔀 Promenio voice kanal",
+            color=0xFFA500,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
+        embed.add_field(name="⬅️ Pre", value=before.channel.name, inline=True)
+        embed.add_field(name="➡️ Nakon", value=after.channel.name, inline=True)
+        await log.send(embed=embed)
 
 
 if __name__ == "__main__":
