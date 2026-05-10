@@ -8,6 +8,10 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+WELCOME_CHANNEL_NAME = "👋〢welcome"
+
+invite_cache = {}
+
 STAFF_ROLES = [
     "Dev. Team",
     "Director",
@@ -41,6 +45,11 @@ class MyBot(discord.Client):
 
     async def on_ready(self):
         print(f"Bot je ulogovan kao {self.user} (ID: {self.user.id})")
+        for guild in self.guilds:
+            try:
+                invite_cache[guild.id] = {inv.code: inv.uses for inv in await guild.invites()}
+            except Exception:
+                pass
 
 
 bot = MyBot()
@@ -316,7 +325,7 @@ class ObavestenieModal(discord.ui.Modal, title="📢 Novo obaveštenje"):
         )
         embed.set_footer(text=f"Obaveštenje poslao: {interaction.user.name}")
         await interaction.response.send_message("✅ Obaveštenje je poslato!", ephemeral=True)
-        await interaction.channel.send(embed=embed)
+        await interaction.channel.send("@here", embed=embed)
 
 
 @bot.tree.command(name="new", description="Pošalje embed obaveštenje u trenutni kanal")
@@ -387,19 +396,66 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    log = await get_log_channel(member.guild)
+    guild = member.guild
+
+    # Automatsko dodeljivanje "Member" role
+    member_role = discord.utils.get(guild.roles, name="Member")
+    if member_role:
+        try:
+            await member.add_roles(member_role, reason="Auto-role on join")
+            print(f"Dodeljena Member rola: {member.name}")
+        except discord.Forbidden:
+            print(f"Nemam permisije da dodelim Member rolu: {member.name}")
+        except Exception as e:
+            print(f"Greška pri dodeli Member role: {e}")
+    else:
+        print("Rola 'Member' ne postoji na serveru")
+
+    inviter = None
+    try:
+        new_invites = {inv.code: inv.uses for inv in await guild.invites()}
+        cached = invite_cache.get(guild.id, {})
+        for code, uses in new_invites.items():
+            if uses > cached.get(code, 0):
+                inv_obj = discord.utils.get(await guild.invites(), code=code)
+                if inv_obj and inv_obj.inviter:
+                    inviter = inv_obj.inviter
+                break
+        invite_cache[guild.id] = new_invites
+    except Exception:
+        pass
+
+    welcome_channel = discord.utils.get(guild.text_channels, name=WELCOME_CHANNEL_NAME)
+    if welcome_channel:
+        embed = discord.Embed(
+            title="💚 Dobrodošao na Velter Roleplay!",
+            description=(
+                f"Zdravo {member.mention}, dobrodošao na server! 🎉\n\n"
+                f"{'Pozvao te: ' + inviter.mention if inviter else ''}\n\n"
+                "📌 Pročitaj pravila i uživaj na serveru!"
+            ),
+            color=0x00C853,
+            timestamp=discord.utils.utcnow()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"Ukupno članova: {guild.member_count}")
+        await welcome_channel.send(embed=embed)
+
+    log = await get_log_channel(guild)
     if not log:
         return
-    embed = discord.Embed(
+    embed_log = discord.Embed(
         title="✅ Novi član se pridružio",
         color=0x00C853,
         timestamp=discord.utils.utcnow()
     )
-    embed.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
-    embed.add_field(name="🆔 ID", value=member.id, inline=True)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text=f"Ukupno članova: {member.guild.member_count}")
-    await log.send(embed=embed)
+    embed_log.add_field(name="👤 Korisnik", value=f"{member.mention} (`{member}`)", inline=True)
+    embed_log.add_field(name="🆔 ID", value=member.id, inline=True)
+    if inviter:
+        embed_log.add_field(name="📨 Pozvao", value=f"{inviter.mention} (`{inviter}`)", inline=True)
+    embed_log.set_thumbnail(url=member.display_avatar.url)
+    embed_log.set_footer(text=f"Ukupno članova: {guild.member_count}")
+    await log.send(embed=embed_log)
 
 
 @bot.event
