@@ -611,6 +611,85 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         await log.send(embed=embed)
 
 
+
+
+# === /admin komande (mute / unmute) ===
+from datetime import timedelta as _td_admin
+
+admin_group = app_commands.Group(name="admin", description="Staff admin komande")
+
+
+@admin_group.command(name="mute", description="Mutuj korisnika na određeno vreme")
+@app_commands.describe(
+    member="Korisnik kojeg mutujes",
+    minutes="Trajanje mute-a u minutima",
+    razlog="Razlog mute-a"
+)
+async def admin_mute(interaction: discord.Interaction, member: discord.Member, minutes: int, razlog: str):
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("🚫 Samo Staff može koristiti ovu komandu.", ephemeral=True)
+        return
+
+    try:
+        await member.timeout(_td_admin(minutes=minutes), reason=razlog)
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ Nemam permisije da mutujem ovog korisnika.", ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Greška: {e}", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🔇 Mutovan si",
+        description=(
+            f"Mutovan si na serveru **{interaction.guild.name}**.\n\n"
+            f"⏱️ **Trajanje:** {minutes} minuta\n"
+            f"📌 **Razlog:** {razlog}\n"
+            f"👮 **Staff:** {interaction.user.name}"
+        ),
+        color=0xff4444
+    )
+    embed.set_footer(text="Velter Roleplay • Staff tim")
+    if interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+
+    dm_status = "✅ DM poslat"
+    try:
+        await member.send(embed=embed)
+    except:
+        dm_status = "⚠️ DM nije mogao biti poslat"
+
+    await interaction.response.send_message(
+        f"✅ {member.mention} mutovan na **{minutes} min**.\n📌 Razlog: {razlog}\n{dm_status}",
+        ephemeral=True
+    )
+
+
+@admin_group.command(name="unmute", description="Skini mute korisniku")
+@app_commands.describe(member="Korisnik kojem skidaš mute")
+async def admin_unmute(interaction: discord.Interaction, member: discord.Member):
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("🚫 Samo Staff može koristiti ovu komandu.", ephemeral=True)
+        return
+
+    try:
+        await member.timeout(None, reason=f"Unmute od {interaction.user}")
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ Nemam permisije.", ephemeral=True)
+        return
+
+    try:
+        await member.send(f"🔊 Skinut ti je mute na serveru **{interaction.guild.name}**.")
+    except:
+        pass
+
+    await interaction.response.send_message(f"✅ {member.mention} više nije mutovan.", ephemeral=True)
+
+
+bot.tree.add_command(admin_group)
+# === kraj /admin komandi ===
+
+
 if __name__ == "__main__":
     if not TOKEN:
         print("GREŠKA: DISCORD_TOKEN nije postavljen!")
