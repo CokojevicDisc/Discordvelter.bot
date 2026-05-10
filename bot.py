@@ -40,8 +40,10 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         self.add_view(TicketMenuView())
         self.add_view(CloseTicketView())
-        await self.tree.sync()
-        print("Slash komande su sinhronizovane.")
+        guild = discord.Object(id=1269178241814630410)
+        self.tree.copy_global_to(guild=guild)
+        synced = await self.tree.sync(guild=guild)
+        print(f"Sinhronizovano {len(synced)} slash komandi na guild-u.")
 
     async def on_ready(self):
         print(f"Bot je ulogovan kao {self.user} (ID: {self.user.id})")
