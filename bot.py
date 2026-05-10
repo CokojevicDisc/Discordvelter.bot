@@ -411,6 +411,27 @@ async def on_member_join(member: discord.Member):
     else:
         print("Rola 'Member' ne postoji na serveru")
 
+    # DM dobrodošlice korisniku
+    try:
+        dm_embed = discord.Embed(
+            title="Dobrodošao na Velter 🌍",
+            description=(
+                f"Ćao {member.name}, dobrodošao na **Velter Discord Server**!\n\n"
+                "🚀 Ovo nije običan server.\n"
+                "Ovo je nova era SA-MP / OpenMP zajednice.\n\n"
+                "🎮 Spremi se za potpuno novi GTA multiplayer doživljaj.\n"
+                "⚡ Sistem, gameplay i ideje koje menjaju sve što znaš o SAMP-u.\n\n"
+                "📌 Prati info kanal i pripremi se za launch!"
+            ),
+            color=0x2b2d31,
+        )
+        dm_embed.set_footer(text="Velter Roleplay • Nova era multiplayera")
+        if guild.icon:
+            dm_embed.set_thumbnail(url=guild.icon.url)
+        await member.send(embed=dm_embed)
+    except Exception:
+        print(f"Ne mogu poslati DM korisniku: {member.name}")
+
     inviter = None
     try:
         new_invites = {inv.code: inv.uses for inv in await guild.invites()}
